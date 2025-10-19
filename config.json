@@ -1,0 +1,25 @@
+{
+  "game_rules": {
+    "end_condition": "first_death",
+    "initial_lives": 3,
+    "max_lives": 6
+  },
+  "shell_counts_by_round": {
+    "default": [2, 2],
+    "1": [2, 1],
+    "2": [3, 3],
+    "3": [4, 4]
+  },
+  "item_distribution": {
+    "items_per_round": {
+      "default": 2
+    },
+    "item_probabilities": {
+      "cigarette": 20,
+      "beer": 20,
+      "saw": 15,
+      "handcuffs": 15,
+      "magnifyingglass": 30
+    }
+  }
+}
