@@ -1,4 +1,6 @@
 /__pycache__/
 /venv/
+/.venv/
+/.uv_cache/
 *.disabled
 *.log
