@@ -1,4 +1,5 @@
 import random
+from comms import network_manager
 
 class Shotgun:
     """
@@ -28,6 +29,12 @@ class Shotgun:
         if not self.chamber:
             return None
         shell = self.chamber.pop(0)
+        
+        # ネットワーク経由でトリガー送信
+        print(f"Sending trigger: FIRE:{shell}")
+        response = network_manager.send_command("shotgun", f"FIRE:{shell}")
+        print(f"Shotgun response: {response}")
+
         # 鋸の効果は1回限り
         if self.is_sawed_off:
             self.is_sawed_off = False

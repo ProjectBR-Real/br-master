@@ -29,5 +29,12 @@ class GameConfig:
     def item_probabilities(self) -> dict:
         return self.config['item_distribution']['item_probabilities']
 
+    @property
+    def network_config(self) -> dict:
+        return self.config.get('network', {})
+
+    def get_device_config(self, device_name: str) -> dict | None:
+        return self.network_config.get('devices', {}).get(device_name)
+
 # シングルトンインスタンスとしてエクスポート
 config = GameConfig()

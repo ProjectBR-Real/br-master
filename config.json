@@ -5,10 +5,22 @@
     "max_lives": 6
   },
   "shell_counts_by_round": {
-    "default": [2, 2],
-    "1": [2, 1],
-    "2": [3, 3],
-    "3": [4, 4]
+    "default": [
+      2,
+      2
+    ],
+    "1": [
+      2,
+      1
+    ],
+    "2": [
+      3,
+      3
+    ],
+    "3": [
+      4,
+      4
+    ]
   },
   "item_distribution": {
     "items_per_round": {
@@ -20,6 +32,14 @@
       "saw": 15,
       "handcuffs": 15,
       "magnifyingglass": 30
+    }
+  },
+  "network": {
+    "devices": {
+      "shotgun": {
+        "ip": "192.168.10.120",
+        "port": 8080
+      }
     }
   }
 }
