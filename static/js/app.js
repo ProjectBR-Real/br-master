@@ -127,7 +127,15 @@ function updateControls(state) {
             const btn = document.createElement('button');
             btn.className = 'btn item-btn';
             btn.textContent = item;
-            btn.onclick = () => sendAction(GAME_ID, 'use', { item_name: item });
+            btn.onclick = () => {
+                let payload = { item_name: item };
+                if (item.toLowerCase() === 'handcuffs') {
+                    const targetId = prompt("Enter Target Player ID for Handcuffs:");
+                    if (!targetId) return;
+                    payload.target_id = parseInt(targetId);
+                }
+                sendAction(GAME_ID, 'use', payload);
+            };
             itemContainer.appendChild(btn);
         });
     }
@@ -158,6 +166,21 @@ async function resetGame() {
     try {
         await fetch(`/api/game/${GAME_ID}/reset`, { method: 'POST' });
         updateGameState(GAME_ID);
+    } catch (err) {
+        console.error(err);
+    }
+}
+
+async function undoGame() {
+    if (!confirm("Undo last action?")) return;
+    try {
+        const res = await fetch(`/api/game/${GAME_ID}/undo`, { method: 'POST' });
+        const result = await res.json();
+        if (result.success) {
+            updateGameState(GAME_ID);
+        } else {
+            alert(result.message);
+        }
     } catch (err) {
         console.error(err);
     }

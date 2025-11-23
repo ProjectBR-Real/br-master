@@ -4,7 +4,7 @@ import json
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from game_manager import GameManager
+    from core.game_manager import GameManager
 
 class HardwareInterface:
     """ハードウェア通信の窓口となるシングルトンクラス"""

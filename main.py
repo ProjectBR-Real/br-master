@@ -1,9 +1,9 @@
 import time
 import threading
-from game_manager import game_manager
-from utils import display_game_state
-from mock_inputs import get_player_action
-from interface import hardware_interface
+from core.game_manager import game_manager
+from utils.common import display_game_state
+from utils.mock_inputs import get_player_action
+from hardware.interface import hardware_interface
 
 def run_interactive_game(game_id: str):
     """ユーザー入力で進行する単一のゲームループ"""

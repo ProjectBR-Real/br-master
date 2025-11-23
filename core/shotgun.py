@@ -1,5 +1,5 @@
 import random
-from comms import network_manager
+from hardware.comms import network_manager
 
 class Shotgun:
     """
@@ -30,10 +30,17 @@ class Shotgun:
             return None
         shell = self.chamber.pop(0)
         
-        # ネットワーク経由でトリガー送信
-        print(f"Sending trigger: FIRE:{shell}")
-        response = network_manager.send_command("shotgun", f"FIRE:{shell}")
-        print(f"Shotgun response: {response}")
+        # ネットワーク経由でトリガー送信 (非同期)
+        def send_trigger():
+            try:
+                print(f"Sending trigger: FIRE:{shell}")
+                response = network_manager.send_command("shotgun", f"FIRE:{shell}")
+                print(f"Shotgun response: {response}")
+            except Exception as e:
+                print(f"Hardware communication failed (non-fatal): {e}")
+
+        import threading
+        threading.Thread(target=send_trigger, daemon=True).start()
 
         # 鋸の効果は1回限り
         if self.is_sawed_off:

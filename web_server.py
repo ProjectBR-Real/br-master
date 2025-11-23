@@ -9,9 +9,11 @@ import json
 import os
 
 # Import game logic
-from game_manager import game_manager
-from game import Game
-from items import ITEMS
+from core.game_manager import game_manager
+from core.game import Game
+from core.game import Game
+from core.items import ITEMS
+from core.game_config import config
 
 app = FastAPI(title="Buckshot Roulette Dashboard")
 
@@ -167,6 +169,18 @@ async def send_message(game_id: str, req: MessageRequest):
     game.broadcast_message(req.message)
     return {"success": True, "message": "Message sent"}
 
+@app.post("/api/game/{game_id}/undo")
+async def undo_game(game_id: str):
+    """Undo the last action"""
+    game = game_manager.get_game(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    if game.undo():
+        return {"success": True, "message": "Undo successful", "state": game.get_state()}
+    else:
+        return {"success": False, "message": "Nothing to undo"}
+
 @app.get("/api/game/{game_id}/logs")
 async def get_game_logs(game_id: str):
     """Get full game logs"""
@@ -185,8 +199,9 @@ async def reset_game(game_id: str):
         raise HTTPException(status_code=404, detail="Game not found")
     
     game.round_number = 0
+    game.round_number = 0
     for p in game.players:
-        p.lives = p.max_lives # Assuming max_lives is accessible or config
+        p.lives = config.rules.get('initial_lives', 3)
         p.items = []
         p.skip_turns = 0
     

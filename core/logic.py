@@ -1,5 +1,5 @@
 import random
-from game_config import config
+from .game_config import config
 
 def calculate_shell_counts(round_number: int, custom_settings: dict = None) -> tuple[int, int]:
     """

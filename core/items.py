@@ -2,7 +2,7 @@ from __future__ import annotations
 import typing
 
 if typing.TYPE_CHECKING:
-    from game import Game
+    from .game import Game
 
 class Item:
     """全てのアイテムの基底クラス"""
@@ -26,8 +26,10 @@ class Cigarette(Item):
         if player.lives >= player.max_lives:
             return False, "Health is already full."
         
-        player.heal(1)
-        message = f"{player.name} restored 1 life."
+        from .game_config import config
+        heal_amount = config.config.get('item_effects', {}).get('cigarette_heal_amount', 1)
+        player.heal(heal_amount)
+        message = f"{player.name} restored {heal_amount} life."
         return True, message
 
 class Beer(Item):

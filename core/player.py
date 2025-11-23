@@ -1,9 +1,9 @@
 from __future__ import annotations
 import typing
-from game_config import config
+from .game_config import config
 
 if typing.TYPE_CHECKING:
-    from items import Item
+    from .items import Item
 
 class Player:
     """

@@ -1,13 +1,14 @@
-from player import Player
-from shotgun import Shotgun
-from items import ITEMS
-import logic
-from game_config import config
-from interface import hardware_interface
+from .player import Player
+from .shotgun import Shotgun
+from .items import ITEMS
+from . import logic
+from .game_config import config
+from hardware.interface import hardware_interface
 import time
 import json
 import os
 from datetime import datetime
+import copy
 
 class Game:
     """ゲーム全体の進行と状態を管理する司令塔クラス"""
@@ -26,7 +27,11 @@ class Game:
         
         # Admin Messages
         self.messages = [] # List of {timestamp, message}
+        self.messages = [] # List of {timestamp, message}
         self.is_terminated = False
+        
+        # Undo History
+        self.history = []
 
     @property
     def current_player(self) -> Player:
@@ -96,6 +101,9 @@ class Game:
     def handle_action(self, action_data: dict):
         if self.is_terminated: return
 
+        # Save state before action
+        self.save_checkpoint()
+
         action = action_data.get('action')
         if action == 'shoot':
             target_id = action_data.get('target_id')
@@ -117,12 +125,22 @@ class Game:
         target_player = self.get_player_by_id(target_id)
         if not target_player or target_player.lives <= 0: return
 
+        # Check saw state BEFORE firing, because fire() might reset it (depending on implementation)
+        # But to be safe and clear, we capture the state here.
+        is_sawed_off = self.shotgun.is_sawed_off
+        
         shell = self.shotgun.fire()
         self.log_event("ACTION_SHOOT", f"{self.current_player.name} shoots at {target_player.name}...")
         hardware_interface.signal_shot_fired(self.game_id, self.current_player.id, shell)
         
-        damage = 2 if self.shotgun.is_sawed_off else 1
-        if self.shotgun.is_sawed_off: self.shotgun.is_sawed_off = False
+        # Calculate damage based on config
+        base_damage = 1
+        damage_multiplier = config.config.get('item_effects', {}).get('saw_damage_multiplier', 2)
+        damage = (base_damage * damage_multiplier) if is_sawed_off else base_damage
+        
+        # If shotgun.fire() didn't reset it, we might need to. 
+        # shotgun.py says "Saw effect is one time", so it likely resets it.
+        # But let's rely on the captured variable.
 
         turn_ends = True
         if shell == 'live':
@@ -262,3 +280,39 @@ class Game:
             'logs': self.logs[-10:] # Send last 10 logs for UI
         }
         return state
+
+    def save_checkpoint(self):
+        """現在のゲーム状態を履歴に保存する"""
+        # Deepcopy is expensive, but safe for this scale
+        state_snapshot = {
+            'players': copy.deepcopy(self.players),
+            'shotgun': copy.deepcopy(self.shotgun),
+            'round_number': self.round_number,
+            'current_player_index': self.current_player_index,
+            'is_terminated': self.is_terminated,
+            'logs': copy.deepcopy(self.logs),
+            'messages': copy.deepcopy(self.messages)
+        }
+        self.history.append(state_snapshot)
+        # Limit history size to prevent memory issues
+        if len(self.history) > 50:
+            self.history.pop(0)
+        print(f"[Undo] Checkpoint saved. History size: {len(self.history)}")
+
+    def undo(self) -> bool:
+        """1つ前の状態に戻す"""
+        if not self.history:
+            print("[Undo] No history to undo.")
+            return False
+        
+        last_state = self.history.pop()
+        self.players = last_state['players']
+        self.shotgun = last_state['shotgun']
+        self.round_number = last_state['round_number']
+        self.current_player_index = last_state['current_player_index']
+        self.is_terminated = last_state['is_terminated']
+        self.logs = last_state['logs']
+        self.messages = last_state['messages']
+        
+        self.log_event("UNDO", "Game state reverted to previous checkpoint.")
+        return True

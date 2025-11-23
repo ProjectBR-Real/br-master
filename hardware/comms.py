@@ -1,6 +1,6 @@
 import socket
 import time
-from game_config import config
+from core.game_config import config
 
 class NetworkManager:
     _instance = None

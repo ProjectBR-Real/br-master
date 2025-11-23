@@ -4,6 +4,10 @@
     "initial_lives": 3,
     "max_lives": 6
   },
+  "item_effects": {
+    "saw_damage_multiplier": 2,
+    "cigarette_heal_amount": 1
+  },
   "shell_counts_by_round": {
     "default": [
       2,

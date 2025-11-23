@@ -1,5 +1,5 @@
 import uuid
-from game import Game
+from .game import Game
 
 class GameManager:
     """複数のゲームインスタンスを管理するクラス"""
