@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Player View - ID {{ player_id }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Oswald:wght@400;700&display=swap"
+        rel="stylesheet">
+    <style>
+        body {
+            overflow: hidden;
+        }
+
+        .player-view-container {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+        }
+
+        .status-huge {
+            font-size: 4rem;
+            margin: 20px 0;
+        }
+
+        .message-box {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 80%;
+            background: rgba(255, 51, 51, 0.2);
+            border: 1px solid var(--accent-red);
+            padding: 20px;
+            display: none;
+            animation: flash 1s infinite alternate;
+        }
+
+        @keyframes flash {
+            from {
+                opacity: 0.8;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="message-overlay" class="message-box">
+        <h2 id="admin-msg-text">MESSAGE FROM GM</h2>
+    </div>
+
+    <div class="container player-view-container">
+        <h1 id="player-name">PLAYER {{ player_id }}</h1>
+
+        <div class="status-huge">
+            LIVES: <span id="lives-display" class="red">-</span>
+        </div>
+
+        <div class="items-section">
+            <h3>INVENTORY</h3>
+            <div id="items-display" class="items-list" style="justify-content: center;">
+                <!-- Items -->
+            </div>
+        </div>
+
+        <div id="turn-alert" style="margin-top: 40px; color: var(--accent-gold); font-size: 2rem; display: none;">
+            YOUR TURN
+        </div>
+    </div>
+
+    <script>
+        const GAME_ID = "{{ game_id }}";
+        const PLAYER_ID = {{ player_id }};
+
+        setInterval(updateStatus, 2000);
+
+        async function updateStatus() {
+            try {
+                const res = await fetch(`/api/game/${GAME_ID}/state`);
+                const state = await res.json();
+
+                const player = state.players.find(p => p.id === PLAYER_ID);
+                if (!player) return;
+
+                document.getElementById('player-name').textContent = player.name;
+                document.getElementById('lives-display').textContent = '⚡'.repeat(player.lives);
+
+                const itemsDiv = document.getElementById('items-display');
+                itemsDiv.innerHTML = player.items.map(i => `<span class="item-tag" style="font-size: 1.5rem; padding: 10px;">${i}</span>`).join('');
+
+                const turnAlert = document.getElementById('turn-alert');
+                if (state.current_player_id === PLAYER_ID && !state.is_terminated) {
+                    turnAlert.style.display = 'block';
+                } else {
+                    turnAlert.style.display = 'none';
+                }
+
+                // Messages
+                const msgBox = document.getElementById('message-overlay');
+                if (state.messages && state.messages.length > 0) {
+                    const lastMsg = state.messages[state.messages.length - 1];
+                    // Simple check: show message if it's recent (e.g. within last 10 seconds) - simplified for now just show last
+                    document.getElementById('admin-msg-text').textContent = lastMsg.content;
+                    msgBox.style.display = 'block';
+                    setTimeout(() => msgBox.style.display = 'none', 5000);
+                }
+
+                if (state.is_terminated) {
+                    document.body.innerHTML = '<h1 style="color:red; text-align:center; margin-top:20%">GAME TERMINATED</h1>';
+                }
+
+            } catch (err) { console.error(err); }
+        }
+    </script>
+</body>
+
+</html>

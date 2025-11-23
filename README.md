@@ -48,5 +48,10 @@ br-master/
 このプロジェクトは `uv` を使って実行することを推奨します。`uv` がインストールされていれば、リポジトリに含まれるスクリプトを実行するだけで、必要なライブラリのインストールとプログラムの起動が自動的に行われます。
 
 ```bash
-uv run python main.py
+uv venv
+.venv\Scripts\activate
+# Linux: source .venv/bin/activate
+uv pip install -r requirements.txt
+uv run python3 main.py
+deactivate
 ```

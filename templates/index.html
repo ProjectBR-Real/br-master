@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Buckshot Roulette - Dashboard</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Oswald:wght@400;700&display=swap"
+        rel="stylesheet">
+</head>
+
+<body>
+    <div class="container">
+        <header>
+            <h1>BUCKSHOT ROULETTE <span class="subtitle">OPERATOR TERMINAL</span></h1>
+        </header>
+
+        <main>
+            <section class="panel">
+                <h2>Active Sessions</h2>
+                <div id="game-list" class="game-grid">
+                    <div class="loading">Scanning for signals...</div>
+                </div>
+            </section>
+
+            <section class="panel">
+                <h2>Initialize New Session</h2>
+                <form id="create-game-form">
+                    <div class="form-group">
+                        <label>Number of Players:</label>
+                        <div class="radio-group">
+                            <label><input type="radio" name="player_count" value="2" checked> 2</label>
+                            <label><input type="radio" name="player_count" value="3"> 3</label>
+                            <label><input type="radio" name="player_count" value="4"> 4</label>
+                        </div>
+                    </div>
+
+                    <div class="advanced-settings">
+                        <h3>Advanced Settings (Optional)</h3>
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label>Live Shells:</label>
+                                <input type="number" name="live_shells" min="1" max="8" placeholder="Default">
+                            </div>
+                            <div class="form-group">
+                                <label>Blank Shells:</label>
+                                <input type="number" name="blank_shells" min="1" max="8" placeholder="Default">
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label>Items per Round:</label>
+                            <input type="number" name="items_per_round" min="0" max="5" placeholder="Default">
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">ESTABLISH LINK</button>
+                </form>
+            </section>
+        </main>
+    </div>
+    <script src="/static/js/app.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            loadGames();
+
+            document.getElementById('create-game-form').addEventListener('submit', async (e) => {
+                e.preventDefault();
+                const formData = new FormData(e.target);
+                const count = formData.get('player_count');
+                const playerIds = Array.from({ length: parseInt(count) }, (_, i) => i + 1);
+
+                const live = formData.get('live_shells');
+                const blank = formData.get('blank_shells');
+                const items = formData.get('items_per_round');
+
+                let customSettings = null;
+                if (live || blank || items) {
+                    customSettings = {};
+                    if (live && blank) {
+                        customSettings.shell_counts = {
+                            live: parseInt(live),
+                            blank: parseInt(blank)
+                        };
+                    }
+                    if (items) {
+                        customSettings.items_per_round = parseInt(items);
+                    }
+                }
+
+                try {
+                    const res = await fetch('/api/game/create', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            player_ids: playerIds,
+                            custom_settings: customSettings
+                        })
+                    });
+                    const data = await res.json();
+                    if (data.game_id) {
+                        window.location.href = `/game/${data.game_id}`;
+                    }
+                } catch (err) {
+                    console.error(err);
+                    alert('Failed to create game');
+                }
+            });
+        });
+
+        async function loadGames() {
+            const list = document.getElementById('game-list');
+            try {
+                const res = await fetch('/api/games');
+                const data = await res.json();
+
+                list.innerHTML = '';
+                if (data.games.length === 0) {
+                    list.innerHTML = '<div class="no-data">No active sessions found.</div>';
+                    return;
+                }
+
+                data.games.forEach(game => {
+                    const card = document.createElement('div');
+                    card.className = 'game-card';
+                    card.innerHTML = `
+                        <div class="game-id">ID: ${game.id}</div>
+                        <div class="game-info">Round: ${game.round} | Players: ${game.players}</div>
+                        <div class="game-status status-${game.is_over ? 'over' : 'active'}">
+                            ${game.is_over ? 'TERMINATED' : 'ACTIVE'}
+                        </div>
+                        <a href="/game/${game.id}" class="btn btn-small">ACCESS</a>
+                    `;
+                    list.appendChild(card);
+                });
+            } catch (err) {
+                list.innerHTML = '<div class="error">Connection Lost</div>';
+            }
+        }
+    </script>
+</body>
+
+</html>

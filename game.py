@@ -4,15 +4,29 @@ from items import ITEMS
 import logic
 from game_config import config
 from interface import hardware_interface
+import time
+import json
+import os
+from datetime import datetime
 
 class Game:
     """ゲーム全体の進行と状態を管理する司令塔クラス"""
-    def __init__(self, player_ids: list[int]):
+    def __init__(self, player_ids: list[int], custom_settings: dict = None):
         self.players = [Player(pid) for pid in player_ids]
         self.shotgun = Shotgun()
         self.game_id = ""
         self.round_number = 0
         self.current_player_index = 0
+        self.custom_settings = custom_settings or {}
+        
+        # Logging
+        self.logs = []
+        self.start_time = datetime.now()
+        self.log_event("GAME_START", f"Game started with players: {player_ids}")
+        
+        # Admin Messages
+        self.messages = [] # List of {timestamp, message}
+        self.is_terminated = False
 
     @property
     def current_player(self) -> Player:
@@ -21,28 +35,67 @@ class Game:
     def get_player_by_id(self, player_id: int) -> Player | None:
         return next((p for p in self.players if p.id == player_id), None)
 
+    def log_event(self, event_type: str, message: str):
+        """イベントをログに記録する"""
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        log_entry = {
+            "timestamp": timestamp,
+            "type": event_type,
+            "message": message,
+            "round": self.round_number
+        }
+        self.logs.append(log_entry)
+        print(f"[{timestamp}] [{event_type}] {message}")
+
+    def broadcast_message(self, message: str):
+        """全プレイヤー（タブレット）にメッセージを送信"""
+        self.messages.append({
+            "timestamp": datetime.now().strftime("%H:%M:%S"),
+            "content": message
+        })
+        self.log_event("ADMIN_MESSAGE", message)
+
+    def force_end(self):
+        """ゲームを強制終了する"""
+        self.is_terminated = True
+        self.log_event("GAME_TERMINATED", "Game was forcibly terminated by admin.")
+        self.save_logs()
+
+    def save_logs(self):
+        """ログをファイルに保存する"""
+        os.makedirs("logs", exist_ok=True)
+        filename = f"logs/game_{self.game_id}_{self.start_time.strftime('%Y%m%d_%H%M%S')}.json"
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(self.logs, f, indent=2, ensure_ascii=False)
+        print(f"Logs saved to {filename}")
+
     def start_new_round(self):
+        if self.is_terminated: return
+
         self.round_number += 1
-        print(f"\n--- Round {self.round_number} Starting ---")
+        self.log_event("ROUND_START", f"Round {self.round_number} Starting")
         
         living_players = [p for p in self.players if p.lives > 0]
-        items_to_distribute = logic.distribute_items(self.round_number, living_players)
+        items_to_distribute = logic.distribute_items(self.round_number, living_players, self.custom_settings)
+        
         for player_id, item_names in items_to_distribute.items():
             player = self.get_player_by_id(player_id)
             if player:
                 for name in item_names:
                     player.add_item(ITEMS[name])
-                print(f"{player.name} received {len(item_names)} items.")
+                self.log_event("ITEM_DISTRIBUTION", f"{player.name} received {len(item_names)} items: {item_names}")
         
         self.reload_shotgun()
 
     def reload_shotgun(self):
-        print("Reloading shotgun...")
-        live_count, blank_count = logic.calculate_shell_counts(self.round_number)
+        self.log_event("SHOTGUN_RELOAD", "Reloading shotgun...")
+        live_count, blank_count = logic.calculate_shell_counts(self.round_number, self.custom_settings)
         self.shotgun.load_shells(live_count, blank_count)
-        print(f"Shotgun loaded with {live_count} live and {blank_count} blank shells.")
+        self.log_event("SHOTGUN_LOADED", f"Shotgun loaded with {live_count} live and {blank_count} blank shells.")
 
     def handle_action(self, action_data: dict):
+        if self.is_terminated: return
+
         action = action_data.get('action')
         if action == 'shoot':
             target_id = action_data.get('target_id')
@@ -54,8 +107,10 @@ class Game:
             self.use_item(item_name, **kwargs)
 
     def shoot(self, target_id: int):
+        # Auto-reload check removed from start to allow "click" on empty if we wanted, 
+        # but here we want to prevent shooting if empty, though it should have auto-reloaded.
         if not self.shotgun.chamber:
-            print("Shotgun is empty! Starting new round.")
+            self.log_event("SHOTGUN_EMPTY", "Shotgun is empty! Reloading...")
             self.start_new_round()
             return
 
@@ -63,7 +118,7 @@ class Game:
         if not target_player or target_player.lives <= 0: return
 
         shell = self.shotgun.fire()
-        print(f"{self.current_player.name} shoots at {target_player.name}...")
+        self.log_event("ACTION_SHOOT", f"{self.current_player.name} shoots at {target_player.name}...")
         hardware_interface.signal_shot_fired(self.game_id, self.current_player.id, shell)
         
         damage = 2 if self.shotgun.is_sawed_off else 1
@@ -71,32 +126,60 @@ class Game:
 
         turn_ends = True
         if shell == 'live':
-            print("It's a LIVE shell!")
+            self.log_event("RESULT_LIVE", "It's a LIVE shell!")
             target_player.take_damage(damage)
-            print(f"{target_player.name} takes {damage} damage! Lives: {target_player.lives}")
+            self.log_event("DAMAGE", f"{target_player.name} takes {damage} damage! Lives: {target_player.lives}")
         else: # Blank shell
-            print("It's a BLANK shell.")
+            self.log_event("RESULT_BLANK", "It's a BLANK shell.")
             if target_player == self.current_player:
                 turn_ends = False
-                print("Turn continues.")
+                self.log_event("TURN_CONTINUE", "Turn continues.")
         
-        if self.is_game_over(): return
+        if self.is_game_over(): 
+            self.save_logs()
+            return
+
+        # Auto-Reload Check: If chamber is now empty, reload immediately
+        if not self.shotgun.chamber:
+             self.log_event("SHOTGUN_EMPTY", "Chamber is empty. Starting new round sequence...")
+             # We wait a brief moment or just trigger it. 
+             # Since this is a turn-based API, we just update the state.
+             self.start_new_round()
+             # If we reload, the turn order might reset or continue? 
+             # Usually new round = items distributed + reload.
+             # Turn usually passes to next player or stays? 
+             # In standard rules, if you shoot blank at self, you keep turn.
+             # If you shoot live, turn passes.
+             # If empty, new round starts. Who starts? 
+             # Usually the person who just played or next? 
+             # Let's assume turn passes if it was live, or if it was blank at other.
+             # If blank at self and empty -> New round, but whose turn?
+             # Let's stick to standard flow: Handle turn change FIRST, then reload if needed?
+             # Or Reload FIRST?
+             # If we reload, we give items.
+             pass
 
         if turn_ends:
             self.next_turn()
+        
+        # Re-check empty after turn change to be safe, or just do it here.
+        # If we did start_new_round above, we might not want to next_turn?
+        # Actually, start_new_round doesn't change turn index usually.
+        # But if the round ends, does the turn pass?
+        # Let's assume turn logic handles "who goes next".
+        # If the gun is empty, we MUST reload.
+        if not self.shotgun.chamber and not self.is_game_over():
+             self.start_new_round()
 
     def use_item(self, item_name: str, **kwargs):
         player = self.current_player
         item = player.find_item(item_name)
 
         if not item:
-            print(f"Item '{item_name}' not found.")
-            hardware_interface.signal_item_use_result(
-                self.game_id, player.id, item_name, False, "Item not found."
-            )
+            self.log_event("ITEM_FAIL", f"Item '{item_name}' not found.")
             return
 
-        print(f"{player.name} tries to use {item.name}...")
+        self.log_event("ACTION_USE_ITEM", f"{player.name} tries to use {item.name}...")
         success, message = item.use(self, **kwargs)
 
         hardware_interface.signal_item_use_result(
@@ -104,14 +187,13 @@ class Game:
         )
 
         if success:
-            print(f"Success: {message}")
+            self.log_event("ITEM_SUCCESS", f"Success: {message}")
             player.remove_item(item_name)
-            # 拡大鏡のように使用者だけが知るべき情報の場合、ここで個別通知も可能
             if item.name == "MagnifyingGlass":
-                print(f"(To {player.name} only): {message}")
-            print("Item used. You can now shoot.")
+                # TODO: Send private info to player tablet
+                pass
         else:
-            print(f"Failed to use {item.name}: {message}")
+            self.log_event("ITEM_FAIL", f"Failed to use {item.name}: {message}")
 
     def next_turn(self):
         self.current_player_index = (self.current_player_index + 1) % len(self.players)
@@ -119,29 +201,45 @@ class Game:
         while self.current_player.skip_turns > 0 or self.current_player.lives <= 0:
             if self.current_player.skip_turns > 0:
                 self.current_player.skip_turns -= 1
-                print(f"{self.current_player.name} is skipped due to Handcuffs.")
+                self.log_event("TURN_SKIP", f"{self.current_player.name} is skipped due to Handcuffs.")
             self.current_player_index = (self.current_player_index + 1) % len(self.players)
 
-        print(f"Turn passes to {self.current_player.name}.")
+        self.log_event("TURN_CHANGE", f"Turn passes to {self.current_player.name}.")
 
     def is_game_over(self) -> bool:
+        if self.is_terminated: return True
+
         end_condition = config.rules.get('end_condition', 'last_man_standing')
         living_players = [p for p in self.players if p.lives > 0]
         
         if end_condition == 'first_death':
-            return len(living_players) < len(self.players)
+            is_over = len(living_players) < len(self.players)
         else: # last_man_standing
-            return len(living_players) <= 1
+            is_over = len(living_players) <= 1
+        
+        if is_over:
+             winner = self.get_winner()
+             if winner:
+                 self.log_event("GAME_OVER", f"Winner is {winner.name}!")
+             else:
+                 self.log_event("GAME_OVER", "Game ends in a draw.")
+        
+        return is_over
 
     def get_winner(self) -> Player | None:
-        if not self.is_game_over(): return None
+        # Removed recursive call to self.is_game_over()
         living_players = [p for p in self.players if p.lives > 0]
         
         end_condition = config.rules.get('end_condition', 'last_man_standing')
         if end_condition == 'first_death':
+            # In first_death, if someone died, the game is over. 
+            # But who is the winner? Usually the last one alive or everyone else?
+            # If it's "first death loses", then everyone else wins? 
+            # Or maybe this mode implies 1v1? 
+            # Let's assume for now if it's not last_man_standing, we just return None or top survivor.
             return living_players[0] if len(living_players) == 1 else None
         else: # last_man_standing
-            return living_players[0] if living_players else None
+            return living_players[0] if len(living_players) == 1 else None
 
     def get_state(self) -> dict:
         players_state = [
@@ -159,5 +257,8 @@ class Game:
             'players': players_state,
             'shotgun': shotgun_state,
             'current_player_id': self.current_player.id,
+            'is_terminated': self.is_terminated,
+            'messages': self.messages,
+            'logs': self.logs[-10:] # Send last 10 logs for UI
         }
         return state

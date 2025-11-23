@@ -6,13 +6,20 @@ class GameManager:
     def __init__(self):
         self.games = {}
 
-    def create_game(self, player_ids: list[int]) -> str:
-        """新しいゲームを作成し、一意のIDを返す"""
-        game_id = str(uuid.uuid4())
-        game = Game(player_ids)
-        game.game_id = game_id # GameインスタンスにIDを持たせる
-        self.games[game_id] = game
-        print(f"New game created with ID: {game_id}")
+    def create_game(self, player_ids: list[int], custom_settings: dict = None) -> str:
+        """
+        新しいゲームを作成し、IDを返す。
+        Args:
+            player_ids (list[int]): 参加するプレイヤーIDのリスト
+            custom_settings (dict): カスタム設定（弾数、アイテムなど）
+        Returns:
+            str: 生成されたゲームID
+        """
+        game_id = str(uuid.uuid4())[:8]
+        new_game = Game(player_ids, custom_settings)
+        new_game.game_id = game_id
+        self.games[game_id] = new_game
+        print(f"Game created with ID: {game_id}")
         return game_id
 
     def get_game(self, game_id: str) -> Game | None:

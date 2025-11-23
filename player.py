@@ -15,8 +15,10 @@ class Player:
             player_id (int): プレイヤーID (1-4)
         """
         self.id: int = player_id
+        print(f"DEBUG: Initializing Player {player_id} with NEW CODE")
         self.name: str = f"Player {player_id}"
         self.lives: int = config.rules['initial_lives']
+        self.max_lives: int = config.rules['max_lives']
         self.items: list['Item'] = []
         self.skip_turns: int = 0
 
