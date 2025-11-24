@@ -1,5 +1,6 @@
 import uvicorn
 from fastapi import FastAPI, Request, HTTPException, Form
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -16,6 +17,14 @@ from core.items import ITEMS
 from core.game_config import config
 
 app = FastAPI(title="Buckshot Roulette Dashboard")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Allow all origins for development
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Mount static files
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -42,6 +51,7 @@ class ActionRequest(BaseModel):
 
 class MessageRequest(BaseModel):
     message: str
+    duration: Optional[int] = None
 
 # --- Routes ---
 
@@ -166,8 +176,34 @@ async def send_message(game_id: str, req: MessageRequest):
     game = game_manager.get_game(game_id)
     if not game:
         raise HTTPException(status_code=404, detail="Game not found")
-    game.broadcast_message(req.message)
+    game.broadcast_message(req.message, req.duration)
     return {"success": True, "message": "Message sent"}
+
+@app.post("/api/game/{game_id}/interaction/start")
+async def start_interaction(game_id: str, action: ActionRequest):
+    """Start an interaction (e.g. Handcuffs selection)"""
+    game = game_manager.get_game(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    # Verify it's the player's turn
+    if game.current_player.id != action.target_id and action.target_id is not None: 
+         # Note: ActionRequest.target_id is reused here as source_id for simplicity or we should check current_player
+         pass
+
+    # For now, trust the request or check game.current_player
+    game.set_pending_interaction('select_target', game.current_player.id, action.item_name)
+    return {"success": True, "message": "Interaction started", "state": game.get_state()}
+
+@app.post("/api/game/{game_id}/interaction/cancel")
+async def cancel_interaction(game_id: str):
+    """Cancel current interaction"""
+    game = game_manager.get_game(game_id)
+    if not game:
+        raise HTTPException(status_code=404, detail="Game not found")
+    
+    game.clear_pending_interaction()
+    return {"success": True, "message": "Interaction cancelled", "state": game.get_state()}
 
 @app.post("/api/game/{game_id}/undo")
 async def undo_game(game_id: str):

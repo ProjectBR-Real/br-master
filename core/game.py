@@ -33,6 +33,25 @@ class Game:
         # Undo History
         self.history = []
 
+        # Interaction State (for Handcuffs etc)
+        self.pending_interaction = None # { 'type': 'select_target', 'source': player_id, 'item': item_name }
+        
+        # Last Action (for UI Popups)
+        self.last_action = None # { 'type', 'source', 'target', 'item', 'result', 'timestamp' }
+
+    def set_pending_interaction(self, interaction_type: str, source_id: int, item_name: str):
+        self.pending_interaction = {
+            'type': interaction_type,
+            'source': source_id,
+            'item': item_name
+        }
+        self.log_event("INTERACTION_START", f"Interaction started: {interaction_type} by Player {source_id}")
+
+    def clear_pending_interaction(self):
+        if self.pending_interaction:
+            self.log_event("INTERACTION_END", "Interaction cleared/cancelled.")
+            self.pending_interaction = None
+
     @property
     def current_player(self) -> Player:
         return self.players[self.current_player_index]
@@ -52,11 +71,12 @@ class Game:
         self.logs.append(log_entry)
         print(f"[{timestamp}] [{event_type}] {message}")
 
-    def broadcast_message(self, message: str):
+    def broadcast_message(self, message: str, duration: int = None):
         """全プレイヤー（タブレット）にメッセージを送信"""
         self.messages.append({
             "timestamp": datetime.now().strftime("%H:%M:%S"),
-            "content": message
+            "content": message,
+            "duration": duration
         })
         self.log_event("ADMIN_MESSAGE", message)
 
@@ -113,6 +133,10 @@ class Game:
             item_name = action_data.get('item_name')
             kwargs = {'target_id': action_data.get('target_id')}
             self.use_item(item_name, **kwargs)
+        
+        # Clear interaction if action was successful (or attempted)
+        # We might want to be more specific, but for now, any action clears the pending state
+        self.clear_pending_interaction()
 
     def shoot(self, target_id: int):
         # Auto-reload check removed from start to allow "click" on empty if we wanted, 
@@ -143,16 +167,27 @@ class Game:
         # But let's rely on the captured variable.
 
         turn_ends = True
+        result_msg = ""
         if shell == 'live':
             self.log_event("RESULT_LIVE", "It's a LIVE shell!")
             target_player.take_damage(damage)
             self.log_event("DAMAGE", f"{target_player.name} takes {damage} damage! Lives: {target_player.lives}")
+            result_msg = f"LIVE ROUND! {damage} DAMAGE"
         else: # Blank shell
             self.log_event("RESULT_BLANK", "It's a BLANK shell.")
+            result_msg = "BLANK ROUND"
             if target_player == self.current_player:
                 turn_ends = False
                 self.log_event("TURN_CONTINUE", "Turn continues.")
         
+        self.last_action = {
+            'type': 'shoot',
+            'source': self.current_player.name,
+            'target': target_player.name,
+            'result': result_msg,
+            'timestamp': time.time()
+        }
+
         if self.is_game_over(): 
             self.save_logs()
             return
@@ -207,6 +242,19 @@ class Game:
         if success:
             self.log_event("ITEM_SUCCESS", f"Success: {message}")
             player.remove_item(item_name)
+            
+            # Special handling for Beer (ejected shell) and Magnifying Glass (inspected shell)
+            # The 'message' from item.use() usually contains the result.
+            # We'll use that for the popup.
+            
+            self.last_action = {
+                'type': 'item',
+                'source': player.name,
+                'item': item.name,
+                'result': message,
+                'timestamp': time.time()
+            }
+            
             if item.name == "MagnifyingGlass":
                 # TODO: Send private info to player tablet
                 pass
@@ -275,9 +323,12 @@ class Game:
             'players': players_state,
             'shotgun': shotgun_state,
             'current_player_id': self.current_player.id,
+            'current_player_index': self.current_player_index,
             'is_terminated': self.is_terminated,
             'messages': self.messages,
-            'logs': self.logs[-10:] # Send last 10 logs for UI
+            'logs': self.logs[-10:], # Send last 10 logs for UI
+            'pending_interaction': self.pending_interaction,
+            'last_action': self.last_action
         }
         return state
 

@@ -52,6 +52,6 @@ uv venv
 .venv\Scripts\activate
 # Linux: source .venv/bin/activate
 uv pip install -r requirements.txt
-uv run python3 main.py
+uv run python web_server.py
 deactivate
 ```
